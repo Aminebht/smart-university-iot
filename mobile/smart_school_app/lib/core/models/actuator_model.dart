@@ -1,4 +1,5 @@
 import 'dart:convert';
+import '../constants/app_constants.dart';
 
 class ActuatorModel {
   final int id;
@@ -67,6 +68,13 @@ class ActuatorModel {
   }
 
   bool get isOn => currentState.toLowerCase() == 'on';
+
+  String get name => displayName;
+  String get deviceId => actuatorId;
+  DeviceStatus get status => DeviceStatus.normal;
+  DateTime get createdAt => updatedAt;
+  int get brightness => (settings['brightness'] as int?) ?? 50;
+  int get speed => (settings['speed'] as int?) ?? 50;
 
   String get displayName {
     switch (actuatorType.toLowerCase()) {

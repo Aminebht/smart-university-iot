@@ -42,7 +42,7 @@ class DepartmentProvider extends ChangeNotifier {
   // Load classrooms for a department
   Future<void> loadClassrooms(String departmentId) async {
     try {
-      final classroomsJson = await SupabaseService.getClassroomsByDepartment(departmentId);
+      final classroomsJson = await SupabaseService.getClassroomsByDepartment(int.parse(departmentId));
       _classrooms = classroomsJson.map((json) => ClassroomModel.fromJson(json)).toList();
     } catch (e) {
       _errorMessage = 'Failed to load classrooms: ${e.toString()}';

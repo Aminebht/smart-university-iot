@@ -8,6 +8,7 @@ import '../core/models/alert_model.dart';
 import '../core/models/occupancy_model.dart';
 import '../core/models/device_status_model.dart';
 import '../core/models/student_model.dart';
+import '../core/models/alarm_rule_model.dart';
 
 class SupabaseService {
   // Add this static client property
@@ -199,9 +200,9 @@ class SupabaseService {
   // ==================== ALERTS ====================
   static Future<List<Map<String, dynamic>>> getAlerts({String? roomId, int limit = 50}) async {
     try {
-      var query = client.from('alerts').select('*').order('timestamp', ascending: false).limit(limit);
+      var query = client.from('alerts').select('*');
       if (roomId != null) query = query.eq('room_id', roomId);
-      return await query;
+      return await query.order('timestamp', ascending: false).limit(limit);
     } catch (e) {
       print('Error fetching alerts: $e');
       return [];
@@ -1061,7 +1062,8 @@ static Future<bool> saveAlarmSystem(Map<String, dynamic> alarmData) async {
     return false;
   }
 }
-static Future<int> getUnresolvedAlertCount() async {
+
+  static Future<int> getUnresolvedAlertCount() async {
   final client = await getClient();
   try {
     // Simple approach: just fetch the records and count them
@@ -1078,13 +1080,21 @@ static Future<int> getUnresolvedAlertCount() async {
   }
 }
 
+  static Future<List<Map<String, dynamic>>> getSensorReadings(
+    String roomId,
+    String sensorType, {
+    int limit = 50,
+  }) async {
+    return getSensorData(roomId, sensorType, limit: limit);
+  }
+
+  static Future<List<Map<String, dynamic>>> getClassroomsByDepartment(int departmentId) async {
+    return getClassrooms(departmentId: departmentId);
+  }
+
   // ==================== LEGACY COMPATIBILITY STUBS ====================
   static Future<Map<String, dynamic>> getClassroomDetails(String classroomId) async {
     return getRoomDetails(classroomId);
-  }
-
-  static Future<List<Map<String, dynamic>>> getDepartments() async {
-    return [];
   }
 
   static Future<List<Map<String, dynamic>>> getAttendanceByDate(DateTime date) async {
@@ -1097,11 +1107,6 @@ static Future<int> getUnresolvedAlertCount() async {
 
   static Future<bool> resolveAlert(int alertId) async {
     return acknowledgeAlert(alertId);
-  }
-
-  static int? getCurrentUserId() {
-    final user = getCurrentUser();
-    return user != null ? int.tryParse(user.id) : null;
   }
 
   static Future<List<Map<String, dynamic>>> getRecentSensorReadings({int limit = 100}) async {
@@ -1124,15 +1129,4 @@ static Future<int> getUnresolvedAlertCount() async {
     // Legacy no-op
   }
 
-  static Future<List<Map<String, dynamic>>> getCameras() async {
-    return [];
-  }
-
-  static Future<List<Map<String, dynamic>>> getActuators() async {
-    return [];
-  }
-
-  static Future<List<Map<String, dynamic>>> getSensors() async {
-    return [];
-  }
 }

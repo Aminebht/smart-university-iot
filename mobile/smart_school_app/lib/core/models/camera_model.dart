@@ -1,5 +1,5 @@
 /// Lightweight camera metadata; actual streaming is done via WebSocket
-to the stream-server URL stored per-room.
+/// to the stream-server URL stored per-room.
 class CameraModel {
   final int? cameraId;
   final String? name;
@@ -16,6 +16,11 @@ class CameraModel {
     this.roomId,
     this.roomName,
   });
+
+  int? get deviceId => cameraId;
+  String? get description => roomName;
+  bool get motionDetectionEnabled => isActive;
+  bool get isRecording => false;
 
   factory CameraModel.fromRoomStreamUrl(String roomId, String streamUrl) {
     return CameraModel(

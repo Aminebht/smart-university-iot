@@ -266,7 +266,7 @@ class SensorReadingChart extends StatelessWidget {
 
   List<FlSpot> _getChartSpots(List<SensorReadingModel> sortedReadings) {
     return List.generate(sortedReadings.length, (index) {
-      return FlSpot(index.toDouble(), sortedReadings[index].value);
+      return FlSpot(index.toDouble(), sortedReadings[index].value ?? 0.0);
     });
   }
 

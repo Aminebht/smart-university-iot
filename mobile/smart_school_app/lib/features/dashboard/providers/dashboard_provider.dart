@@ -2,16 +2,19 @@ import 'package:flutter/material.dart';
 import '../../../core/models/room_model.dart';
 import '../../../core/models/sensor_reading_model.dart';
 import '../../../core/models/alert_model.dart';
+import '../../../core/models/department_model.dart';
 import '../../../services/supabase_service.dart';
 
 class DashboardProvider extends ChangeNotifier {
   List<RoomModel> _rooms = [];
+  List<DepartmentModel> _departments = [];
   List<AlertModel> _recentAlerts = [];
   Map<String, double> _quickStats = {};
   bool _isLoading = false;
   String? _errorMessage;
 
   List<RoomModel> get rooms => _rooms;
+  List<DepartmentModel> get departments => _departments;
   List<AlertModel> get recentAlerts => _recentAlerts;
   Map<String, double> get quickStats => _quickStats;
   bool get isLoading => _isLoading;
@@ -28,6 +31,7 @@ class DashboardProvider extends ChangeNotifier {
 
     try {
       await loadRooms();
+      await loadDepartments();
       await calculateQuickStats();
       await loadRecentAlerts();
       _isLoading = false;
@@ -45,6 +49,15 @@ class DashboardProvider extends ChangeNotifier {
       _rooms = roomsJson.map((json) => RoomModel.fromJson(json)).toList();
     } catch (e) {
       _errorMessage = 'Failed to load rooms: ${e.toString()}';
+    }
+  }
+
+  Future<void> loadDepartments() async {
+    try {
+      final departmentsJson = await SupabaseService.getDepartments();
+      _departments = departmentsJson.map((json) => DepartmentModel.fromJson(json)).toList();
+    } catch (e) {
+      _errorMessage = 'Failed to load departments: ${e.toString()}';
     }
   }
 

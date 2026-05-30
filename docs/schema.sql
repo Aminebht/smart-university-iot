@@ -40,6 +40,20 @@ VALUES ('cam_salle1', 'salle1', 'online')
 ON CONFLICT (device_id) DO NOTHING;
 
 -- ============================================
+-- USERS (Teacher / Admin profiles linked to Supabase Auth)
+-- ============================================
+CREATE TABLE IF NOT EXISTS public.users (
+  user_id     uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  email       text UNIQUE NOT NULL,
+  name        text,
+  role        text DEFAULT 'teacher',
+  created_at  timestamp with time zone DEFAULT now(),
+  updated_at  timestamp with time zone DEFAULT now()
+);
+
+COMMENT ON TABLE public.users IS 'Academic users profiles / teachers / admins';
+
+-- ============================================
 -- STUDENTS
 -- ============================================
 DO $$ BEGIN
@@ -212,7 +226,7 @@ DECLARE
   tbl    text;
   tables text[] := ARRAY[
     'rooms', 'sensor_data', 'actuators', 'device_status',
-    'attendance', 'room_occupancy', 'alerts', 'rfid_cards', 'students'
+    'attendance', 'room_occupancy', 'alerts', 'rfid_cards', 'students', 'users'
   ];
 BEGIN
   FOREACH tbl IN ARRAY tables LOOP
@@ -241,6 +255,7 @@ ALTER TABLE public.room_occupancy   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.alerts           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.rfid_cards       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.students         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.users            ENABLE ROW LEVEL SECURITY;
 
 -- Allow authenticated users to read all data (academic demo context)
 -- In production, restrict by user role / building / department
@@ -292,6 +307,19 @@ CREATE POLICY "Allow authenticated read rfid_cards"
 DROP POLICY IF EXISTS "Allow authenticated read students" ON public.students;
 CREATE POLICY "Allow authenticated read students"
   ON public.students FOR SELECT TO authenticated USING (true);
+
+-- Policies for public.users
+DROP POLICY IF EXISTS "Allow authenticated read users" ON public.users;
+CREATE POLICY "Allow authenticated read users"
+  ON public.users FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Allow authenticated insert users" ON public.users;
+CREATE POLICY "Allow authenticated insert users"
+  ON public.users FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Allow authenticated update users" ON public.users;
+CREATE POLICY "Allow authenticated update users"
+  ON public.users FOR UPDATE TO authenticated USING (auth.uid() = user_id);
 
 -- ============================================
 -- THRESHOLD CONFIGURATION (for bridge-server alerts)

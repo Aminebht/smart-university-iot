@@ -858,10 +858,9 @@ class _AlarmRulesScreenState extends State<AlarmRulesScreen> {
         (c) => c.deviceId == _selectedDeviceId,
         orElse: () => CameraModel(
           cameraId: -1,
-          deviceId: -1,
           name: 'Unknown Sensor',
-          streamUrl: '', 
-          motionDetectionEnabled: false, description: '', isRecording: true,isActive: false
+          streamUrl: '',
+          isActive: false,
         ),
       );
       
@@ -952,10 +951,9 @@ class _AlarmRulesScreenState extends State<AlarmRulesScreen> {
         (c) => c.deviceId == deviceId,
         orElse: () => CameraModel(
           cameraId: -1,
-          deviceId: -1,
           name: 'Unknown Sensor',
-          streamUrl: '', 
-          motionDetectionEnabled: false, description: '', isRecording:false,isActive: false
+          streamUrl: '',
+          isActive: false,
         ),
       );
       

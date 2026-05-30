@@ -39,9 +39,6 @@ class CameraProvider extends ChangeNotifier {
         name: 'Camera $cameraId',
         streamUrl: 'http://192.168.0.22:3000/stream',
         isActive: true,
-        description: 'Classroom camera',
-        motionDetectionEnabled: true,
-        isRecording: false
       );
       
       _isLoading = false;

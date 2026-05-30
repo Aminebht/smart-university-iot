@@ -60,9 +60,6 @@ class _CameraThumbnailWidgetState extends State<CameraThumbnailWidget> {
         name: 'Classroom Camera',
         streamUrl: _streamUrl,
         isActive: true,
-        motionDetectionEnabled: true,
-        description: 'Camera for classroom monitoring',
-        isRecording: false,
       );
       
       developer.log('📱 CameraThumbnail: camera model created with URL: $_streamUrl', name: 'Camera');
@@ -273,7 +270,7 @@ class _CameraThumbnailWidgetState extends State<CameraThumbnailWidget> {
               bottom: 8,
               left: 8,
               child: Text(
-                _camera != null ? _camera!.name : 'Camera',
+                _camera != null ? (_camera!.name ?? 'Camera') : 'Camera',
                 style: const TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.bold,

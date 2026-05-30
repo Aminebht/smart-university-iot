@@ -58,6 +58,38 @@ class SensorReadingModel {
     return '$val $u';
   }
 
+  int get sensorId => id;
+
+  DeviceStatus get status {
+    if (value == null) return DeviceStatus.normal;
+    final v = value!;
+    switch (sensorType) {
+      case 'temperature':
+        return v > 35 ? DeviceStatus.critical : v > 30 ? DeviceStatus.warning : DeviceStatus.normal;
+      case 'humidity':
+        return v > 80 ? DeviceStatus.critical : v > 60 ? DeviceStatus.warning : DeviceStatus.normal;
+      case 'gas':
+        return v > 1000 ? DeviceStatus.critical : v > 500 ? DeviceStatus.warning : DeviceStatus.normal;
+      case 'light':
+        return DeviceStatus.normal;
+      default:
+        return DeviceStatus.normal;
+    }
+  }
+
+  Color get statusColor {
+    switch (status) {
+      case DeviceStatus.normal:
+        return AppColors.success;
+      case DeviceStatus.warning:
+        return AppColors.warning;
+      case DeviceStatus.critical:
+        return AppColors.error;
+      default:
+        return AppColors.success;
+    }
+  }
+
   String get _defaultUnit {
     switch (sensorType) {
       case 'temperature': return '°C';

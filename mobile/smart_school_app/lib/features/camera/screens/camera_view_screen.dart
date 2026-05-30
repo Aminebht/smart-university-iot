@@ -194,7 +194,7 @@ class _CameraViewScreenState extends State<CameraViewScreen> {
               ),
               Expanded(
                 child: Text(
-                  widget.camera.name,
+                  widget.camera.name ?? 'Camera',
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 18,

@@ -119,7 +119,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
                 spacing: 8,
                 runSpacing: 8,
                 children: sensorReadings.take(6).map((r) {
-                  final reading = SensorReadingModel.fromJson(r);
+                  final reading = r is SensorReadingModel ? r : SensorReadingModel.fromJson(r as Map<String, dynamic>);
                   return Chip(
                     avatar: Icon(reading.sensorIcon, color: AppColors.primary),
                     label: Text('${reading.sensorType}: ${reading.displayValue}'),

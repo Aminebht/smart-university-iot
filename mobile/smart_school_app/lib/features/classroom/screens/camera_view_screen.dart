@@ -258,7 +258,7 @@ class _CameraViewScreenState extends State<CameraViewScreen> {
 
           return Scaffold(
             appBar: AppBar(
-              title: Text(camera.name),
+              title: Text(camera.name ?? 'Camera'),
               actions: [
                 // Connection status indicator
                 Padding(
@@ -623,10 +623,7 @@ class CameraProvider extends ChangeNotifier {
         cameraId: cameraId,
         name: 'Camera $cameraId',
         streamUrl: 'ws://192.168.1.175:8080/stream',
-        motionDetectionEnabled: false,
-        description: '',
-        isRecording: false,
-        isActive: true
+        isActive: true,
       );
       _isLoading = false;
     } catch (e) {

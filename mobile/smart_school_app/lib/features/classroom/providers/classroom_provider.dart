@@ -179,15 +179,13 @@ class ClassroomProvider extends ChangeNotifier {
       
       // Update local state immediately to reflect UI change
       final updatedActuator = ActuatorModel(
+        id: actuator.id,
+        roomId: actuator.roomId,
         actuatorId: actuator.actuatorId,
-        deviceId: actuator.deviceId,
         actuatorType: actuator.actuatorType,
-        currentState: isOn ? "on" : "off", // Set state based on toggle value
-        createdAt: actuator.createdAt,
+        currentState: isOn ? "on" : "off",
         updatedAt: DateTime.now(),
-        status: actuator.status, // Keep existing status
-        name: actuator.name,
-        settings: actuator.settings, // Preserve existing settings
+        settings: actuator.settings,
       );
       
       // Update actuator in the list
@@ -241,14 +239,12 @@ class ClassroomProvider extends ChangeNotifier {
       
       // Update local state immediately to reflect UI change
       final updatedActuator = ActuatorModel(
+        id: actuator.id,
+        roomId: actuator.roomId,
         actuatorId: actuator.actuatorId,
-        deviceId: actuator.deviceId,
         actuatorType: actuator.actuatorType,
         currentState: actuator.currentState,
-        createdAt: actuator.createdAt,
         updatedAt: DateTime.now(),
-        status: actuator.status,
-        name: actuator.name,
         settings: updatedSettings,
       );
       

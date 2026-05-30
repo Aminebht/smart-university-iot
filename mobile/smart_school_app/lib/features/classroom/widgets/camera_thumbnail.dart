@@ -108,7 +108,7 @@ class CameraThumbnail extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    camera.name,
+                    camera.name ?? 'Camera',
                     style: const TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 14,
