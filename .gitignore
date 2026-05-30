@@ -47,5 +47,8 @@ migrate_working_dir/
 .idea/
 .vscode/
 
+# --- Environment secrets ---
+**/.env
+
 # --- OS files ---
 Thumbs.db

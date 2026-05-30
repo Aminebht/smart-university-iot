@@ -1,29 +1,44 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:smart_school/core/models/alert_model.dart';
-import 'package:smart_school/services/supabase_service.dart';
+import '../../../core/models/alert_model.dart';
+import '../../../services/supabase_service.dart';
 
 class AlertsProvider extends ChangeNotifier {
   List<AlertModel> _alerts = [];
   List<AlertModel> _recentAlerts = [];
   bool _isLoading = false;
   String? _errorMessage;
-  
-  // Getters
+  StreamSubscription? _alertSub;
+
   List<AlertModel> get alerts => _alerts;
   List<AlertModel> get recentAlerts => _recentAlerts;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
-  
-  // Initialize the provider
+
   AlertsProvider() {
     loadRecentAlerts();
+    _subscribeToAlerts();
   }
-  
-  // Load all alerts with optional filters
+
+  void _subscribeToAlerts() {
+    _alertSub = SupabaseService.streamAlerts().listen((data) {
+      // On new alert data, reload recent alerts
+      loadRecentAlerts();
+      loadAlerts(showLoading: false);
+    }, onError: (e) {
+      // Silently handle realtime errors
+    });
+  }
+
+  @override
+  void dispose() {
+    _alertSub?.cancel();
+    super.dispose();
+  }
+
   Future<void> loadAlerts({
-    int limit = 50, 
-    String? severity,
-    bool? resolved,
+    int limit = 50,
+    String? roomId,
     bool showLoading = true,
   }) async {
     if (showLoading) {
@@ -33,162 +48,87 @@ class AlertsProvider extends ChangeNotifier {
 
     try {
       final alertsJson = await SupabaseService.getAlerts(
+        roomId: roomId,
         limit: limit,
-        severity: severity,
-        resolved: resolved,
       );
-      
-      // Debug the raw data structure
-      if (alertsJson.isNotEmpty) {
-        print('Sample alert raw data: ${alertsJson[0]}');
-      }
-      
-      _alerts = alertsJson.map((json) {
-        try {
-          // Add try-catch for each item to prevent a single bad item from crashing everything
-          final alertData = {...json};
-          
-          // Handle devices data if exists
-          if (json['devices'] != null) {
-            alertData['device_name'] = json['devices']['model'];
-            alertData['device_location'] = json['devices']['location'];
-          }
-          
-          return AlertModel.fromJson(alertData);
-        } catch (e) {
-          print('Error parsing alert: $e');
-          print('Problematic JSON: $json');
-          // Return a placeholder alert instead of crashing
-          return AlertModel(
-            alertId: 0,
-            deviceId: 0,
-            alertType: 'Error',
-            severity: 'error',
-            message: 'Failed to parse this alert: $e',
-            timestamp: DateTime.now(),
-            resolved: false,
-          );
-        }
-      }).toList();
+
+      _alerts = alertsJson.map((json) => AlertModel.fromJson(json)).toList();
 
       if (showLoading) {
         _isLoading = false;
       }
-      
       _errorMessage = null;
       notifyListeners();
     } catch (e) {
-      print('Failed to load alerts: $e');
       _errorMessage = 'Failed to load alerts: ${e.toString()}';
-      
-      if (showLoading) {
-        _isLoading = false;
-      }
-      
+      if (showLoading) _isLoading = false;
       notifyListeners();
     }
   }
-  
-  // Load recent alerts for dashboard
+
   Future<void> loadRecentAlerts({int limit = 5, bool showLoading = false}) async {
     if (showLoading) {
       _isLoading = true;
       notifyListeners();
     }
-
     try {
       final alertsJson = await SupabaseService.getRecentAlerts(limit: limit);
-      
-      _recentAlerts = alertsJson.map((json) {
-        final Map<String, dynamic> alertData = {
-          ...json,
-        };
-        
-        // Handle devices data correctly
-        if (json['devices'] != null) {
-          alertData['device_name'] = json['devices']['name'];
-          alertData['device_location'] = json['devices']['location'];
-        }
-        
-        return AlertModel.fromJson(alertData);
-      }).toList();
-
-      if (showLoading) {
-        _isLoading = false;
-      }
-      
+      _recentAlerts = alertsJson.map((json) => AlertModel.fromJson(json)).toList();
+      if (showLoading) _isLoading = false;
       notifyListeners();
     } catch (e) {
-      print('Error loading recent alerts: $e');
-      if (showLoading) {
-        _isLoading = false;
-      }
+      if (showLoading) _isLoading = false;
     }
   }
-  
-  // Mark an alert as resolved
-  Future<bool> resolveAlert(int alertId) async {
+
+  Future<bool> acknowledgeAlert(int alertId) async {
     _isLoading = true;
     notifyListeners();
-    
     try {
-      print('Attempting to resolve alert $alertId');
-      final success = await SupabaseService.resolveAlert(alertId);
-      
+      final success = await SupabaseService.acknowledgeAlert(alertId);
       if (success) {
-        // Update the alert in the local lists
-        _updateAlertResolvedStatus(alertId);
-        print('Alert $alertId resolved successfully');
-      } else {
-        _errorMessage = 'Failed to update alert status in database';
-        print('Failed to resolve alert $alertId');
+        _updateAlertAckStatus(alertId);
       }
-      
       _isLoading = false;
       notifyListeners();
       return success;
     } catch (e) {
-      _errorMessage = 'Error resolving alert: ${e.toString()}';
+      _errorMessage = 'Error acknowledging alert: ${e.toString()}';
       _isLoading = false;
       notifyListeners();
-      print('Exception while resolving alert: $e');
       return false;
     }
   }
-  
-  // Helper method to update local state
-  void _updateAlertResolvedStatus(int alertId) {
-    // Update in main alerts list
+
+  void _updateAlertAckStatus(int alertId) {
     for (int i = 0; i < _alerts.length; i++) {
-      if (_alerts[i].alertId == alertId) {
+      if (_alerts[i].id == alertId) {
         _alerts[i] = AlertModel(
-          alertId: _alerts[i].alertId,
-          deviceId: _alerts[i].deviceId,
+          id: _alerts[i].id,
+          roomId: _alerts[i].roomId,
           alertType: _alerts[i].alertType,
           severity: _alerts[i].severity,
           message: _alerts[i].message,
+          personCount: _alerts[i].personCount,
           timestamp: _alerts[i].timestamp,
-          resolved: true,
-          resolvedAt: DateTime.now(),
-          resolvedById: SupabaseService.getCurrentUserId(),
+          acknowledged: true,
+          createdAt: _alerts[i].createdAt,
         );
         break;
       }
     }
-    
-    // Update in recent alerts list
     for (int i = 0; i < _recentAlerts.length; i++) {
-      if (_recentAlerts[i].alertId == alertId) {
+      if (_recentAlerts[i].id == alertId) {
         _recentAlerts[i] = AlertModel(
-          alertId: _recentAlerts[i].alertId,
-          deviceId: _recentAlerts[i].deviceId,
+          id: _recentAlerts[i].id,
+          roomId: _recentAlerts[i].roomId,
           alertType: _recentAlerts[i].alertType,
           severity: _recentAlerts[i].severity,
           message: _recentAlerts[i].message,
+          personCount: _recentAlerts[i].personCount,
           timestamp: _recentAlerts[i].timestamp,
-          resolved: true,
-          resolvedAt: DateTime.now(),
-          resolvedById: SupabaseService.getCurrentUserId(),
+          acknowledged: true,
+          createdAt: _recentAlerts[i].createdAt,
         );
         break;
       }

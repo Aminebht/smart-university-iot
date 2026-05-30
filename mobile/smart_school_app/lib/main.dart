@@ -1,24 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:smart_school/core/models/alarm_system_model.dart';
 import 'package:smart_school/core/models/camera_model.dart';
 import 'package:smart_school/features/alerts/providers/alerts_provider.dart';
 import 'package:smart_school/features/alerts/screens/alerts_screen.dart';
 import 'package:smart_school/features/presence/providers/attendance_provider.dart';
 import 'package:smart_school/features/presence/screens/student_presence_screen.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core/constants/app_constants.dart';
 import 'features/auth/providers/auth_provider.dart';
 import 'features/auth/screens/login_screen.dart';
 import 'features/auth/screens/reset_password_screen.dart';
-import 'features/auth/screens/signup_screen.dart'; // Add this import at the top
+import 'features/auth/screens/signup_screen.dart';
 import 'features/auth/screens/splash_screen.dart';
 import 'features/dashboard/providers/dashboard_provider.dart';
 import 'features/dashboard/screens/dashboard_screen.dart';
-import 'features/department/screens/department_list_screen.dart';
-import 'features/department/screens/department_detail_screen.dart';
-import 'features/classroom/screens/classroom_detail_screen.dart';
 import 'features/camera/screens/camera_view_screen.dart';
+import 'features/navigation/screens/room_detail_screen.dart';
+// Legacy screens (hidden from nav but preserved)
 import 'features/security/screens/security_dashboard_screen.dart';
 import 'features/security/screens/security_events_screen.dart';
 import 'features/security/providers/security_provider.dart';
@@ -105,35 +102,26 @@ class SmartSchoolApp extends StatelessWidget {
           AppRoutes.splash: (context) => const SplashScreen(),
           AppRoutes.login: (context) => const LoginScreen(),
           AppRoutes.resetPassword: (context) => const ResetPasswordScreen(),
-          AppRoutes.signup: (context) => const SignUpScreen(), // Add this line
-          
-          // Update dashboard to use the container
+          AppRoutes.signup: (context) => const SignUpScreen(),
+
+          // Main bottom-nav tabs: Dashboard | Rooms | Presence | Alerts | Settings
           AppRoutes.dashboard: (context) => const BottomNavContainer(initialIndex: 0),
-          // Update these route mappings
-          AppRoutes.department: (context) => const BottomNavContainer(initialIndex: 1),
-          AppRoutes.security: (context) => const BottomNavContainer(initialIndex: 2),
-          AppRoutes.studentPresence: (context) => const BottomNavContainer(initialIndex: 3),
-          AppRoutes.settings: (context) => const BottomNavContainer(initialIndex: 4), // Add this for settings
-          
-          // Keep other specific screen routes unchanged
+          AppRoutes.room: (context) => const BottomNavContainer(initialIndex: 1),
+          AppRoutes.presence: (context) => const BottomNavContainer(initialIndex: 2),
+          AppRoutes.alerts: (context) => const BottomNavContainer(initialIndex: 3),
+          AppRoutes.settings: (context) => const BottomNavContainer(initialIndex: 4),
+
+          // Legacy routes (hidden from nav but preserved)
           AppRoutes.securityEvents: (context) => const SecurityEventsScreen(),
           AppRoutes.alarmSystems: (context) => const AlarmSystemsScreen(),
-          AppRoutes.alerts: (context) => const AlertsScreen(),
-          AppRoutes.studentPresence: (context) => const StudentPresenceScreen(), // Add this line
-          // Add other routes as they are developed
+          AppRoutes.studentPresence: (context) => const StudentPresenceScreen(),
         },
         onGenerateRoute: (settings) {
-          if (settings.name == AppRoutes.department && settings.arguments != null) {
+          if (settings.name == AppRoutes.room && settings.arguments != null) {
+            // Room detail expects roomId string
             return MaterialPageRoute(
-              builder: (context) => DepartmentDetailScreen(
-                departmentId: settings.arguments as String,
-              ),
-            );
-          }
-          if (settings.name == AppRoutes.classroom && settings.arguments != null) {
-            return MaterialPageRoute(
-              builder: (context) => ClassroomDetailScreen(
-                classroomId: settings.arguments as String,
+              builder: (context) => RoomDetailScreen(
+                roomId: settings.arguments as String,
               ),
             );
           }
@@ -144,47 +132,21 @@ class SmartSchoolApp extends StatelessWidget {
               ),
             );
           }
+          // Legacy alarm routes (preserved but hidden)
           if (settings.name == AppRoutes.alarmDetail && settings.arguments != null) {
-            // Handle both int and AlarmSystemModel arguments
-            final alarmId = settings.arguments is AlarmSystemModel 
-              ? (settings.arguments as AlarmSystemModel).alarmId 
-              : settings.arguments as int;
-            
             return MaterialPageRoute(
-              builder: (context) => AlarmDetailScreen(
-                alarmId: alarmId,
-              ),
+              builder: (context) => AlarmDetailScreen(alarmId: settings.arguments as int),
             );
           }
           if (settings.name == AppRoutes.alarmEdit) {
-            // Handle both cases: with and without arguments
-            final alarmId = settings.arguments == null
-                ? null  // Creating new alarm system
-                : settings.arguments is AlarmSystemModel
-                    ? (settings.arguments as AlarmSystemModel).alarmId
-                    : settings.arguments as int?;
-            
+            final alarmId = settings.arguments as int?;
             return MaterialPageRoute(
-              builder: (context) => AlarmEditScreen(
-                alarmId: alarmId,
-              ),
-            );
-          }
-          if (settings.name == AppRoutes.alarmSystems && settings.arguments != null) {
-            return MaterialPageRoute(
-              builder: (context) => AlarmSystemsScreen(),
+              builder: (context) => AlarmEditScreen(alarmId: alarmId),
             );
           }
           if (settings.name == AppRoutes.alarmEvents && settings.arguments != null) {
-            // Handle both int and AlarmSystemModel arguments
-            final alarmId = settings.arguments is AlarmSystemModel 
-              ? (settings.arguments as AlarmSystemModel).alarmId 
-              : settings.arguments as int;
-            
             return MaterialPageRoute(
-              builder: (context) => AlarmEventsScreen(
-                alarmId: alarmId,
-              ),
+              builder: (context) => AlarmEventsScreen(alarmId: settings.arguments as int),
             );
           }
           return null;

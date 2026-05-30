@@ -1,8 +1,13 @@
-import 'package:smart_school/core/models/alarm_rule_model.dart';
-import 'package:smart_school/core/models/classroom_model.dart';
-import 'package:smart_school/core/models/department_model.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/constants/app_constants.dart';
+import '../core/models/room_model.dart';
+import '../core/models/sensor_reading_model.dart';
+import '../core/models/attendance_model.dart';
+import '../core/models/actuator_model.dart';
+import '../core/models/alert_model.dart';
+import '../core/models/occupancy_model.dart';
+import '../core/models/device_status_model.dart';
+import '../core/models/student_model.dart';
 
 class SupabaseService {
   // Add this static client property
@@ -46,532 +51,230 @@ class SupabaseService {
     return client.auth.onAuthStateChange;
   }
   
-  // Sensor data methods
-  static Future<List<Map<String, dynamic>>> getSensorReadings(
-      String classroomId, String sensorType, {int limit = 20}) async {
+  // ==================== ROOMS ====================
+  static Future<List<Map<String, dynamic>>> getRooms() async {
     try {
-      // First, get the classroom details which includes devices and sensors
-      final classroom = await getClassroomDetails(classroomId);
-      
-      if (classroom['sensors'] == null || !(classroom['sensors'] is List) || 
-          (classroom['sensors'] as List).isEmpty) {
-        return [];
-      }
-      
-      final sensors = classroom['sensors'] as List<dynamic>;
-      
-      // Filter sensors by type
-      final filteredSensors = sensors.where((s) => s['sensor_type'] == sensorType).toList();
-      
-      if (filteredSensors.isEmpty) {
-        return [];
-      }
-      
-      // Get sensor IDs
-      final sensorIds = filteredSensors.map((s) => s['sensor_id']).toList();
-      
-      if (sensorIds.isEmpty) {
-        return [];
-      }
-      
-      // Get readings for these sensors
-      final readings = await client
-          .from('sensor_readings')
+      return await client.from('rooms').select('*').order('name');
+    } catch (e) {
+      print('Error getting rooms: $e');
+      return [];
+    }
+  }
+
+  static Future<Map<String, dynamic>> getRoomDetails(String roomId) async {
+    try {
+      final room = await client.from('rooms').select('*').eq('room_id', roomId).single();
+      // Fetch related data
+      final sensorReadings = await client
+          .from('sensor_data')
           .select('*')
-          .filter('sensor_id', 'in', sensorIds)
+          .eq('room_id', roomId)
+          .order('timestamp', ascending: false)
+          .limit(50);
+      final actuators = await client
+          .from('actuators')
+          .select('*')
+          .eq('room_id', roomId);
+      final deviceStatus = await client
+          .from('device_status')
+          .select('*')
+          .eq('room_id', roomId);
+      final occupancy = await client
+          .from('room_occupancy')
+          .select('*')
+          .eq('room_id', roomId)
+          .order('timestamp', ascending: false)
+          .limit(1)
+          .maybeSingle();
+
+      room['sensor_readings'] = sensorReadings;
+      room['actuators'] = actuators;
+      room['device_status'] = deviceStatus;
+      room['occupancy'] = occupancy;
+      return room;
+    } catch (e) {
+      print('Error getting room details: $e');
+      throw e;
+    }
+  }
+
+  // ==================== SENSOR DATA ====================
+  static Future<List<Map<String, dynamic>>> getSensorData(
+      String roomId, String sensorType, {int limit = 50}) async {
+    try {
+      return await client
+          .from('sensor_data')
+          .select('*')
+          .eq('room_id', roomId)
+          .eq('sensor_type', sensorType)
           .order('timestamp', ascending: false)
           .limit(limit);
-      
-      // Add sensor_type to each reading if it doesn't already have one
-      for (var reading in readings) {
-        // If sensor_type is null, find which sensor this reading belongs to
-        if (reading['sensor_type'] == null) {
-          for (var sensor in filteredSensors) {
-            if (sensor['sensor_id'] == reading['sensor_id']) {
-              reading['sensor_type'] = sensor['sensor_type'] ?? sensorType;
-              break;
-            }
-          }
-          
-          // If we still couldn't find the sensor type, use the requested sensorType
-          if (reading['sensor_type'] == null) {
-            reading['sensor_type'] = sensorType;
-          }
-        }
-      }
-      
-      return readings;
     } catch (e) {
-      print('Error in getSensorReadings: $e');
+      print('Error in getSensorData: $e');
       return [];
     }
   }
-  
-  static Stream<List<Map<String, dynamic>>> streamSensorReadings(String classroomId) {
+
+  static Stream<List<Map<String, dynamic>>> streamSensorData(String roomId) {
     return client
-        .from('sensor_readings')
+        .from('sensor_data')
         .stream(primaryKey: ['id'])
-        .eq('classroom_id', classroomId);
+        .eq('room_id', roomId);
   }
-  
-  // Get recent sensor readings across all classrooms
-  static Future<List<Map<String, dynamic>>> getRecentSensorReadings({int limit = 100}) async {
-    final client = await getClient();
-    
+
+  static Future<List<Map<String, dynamic>>> getRecentSensorData({int limit = 100}) async {
     try {
-      // Get the most recent readings, joining with sensors to get sensor types
-      final response = await client
-        .from('sensor_readings')
-        .select('''
-          *,
-          sensors:sensor_id (
-            sensor_id,
-            sensor_type,
-            measurement_unit
-          )
-        ''')
-        .order('timestamp', ascending: false)
+      return await client
+          .from('sensor_data')
+          .select('*')
+          .order('timestamp', ascending: false)
         .limit(limit);
-        
-      // Process the response to flatten the structure
-      return (response as List).map((item) {
-        final sensor = item['sensors'] as Map<String, dynamic>;
-        return {
-          'reading_id': item['reading_id'],
-          'sensor_id': item['sensor_id'],
-          'value': item['value'],
-          'timestamp': item['timestamp'],
-          'sensor_type': sensor['sensor_type'],
-          'unit': sensor['measurement_unit'],
-        };
-      }).toList();
     } catch (e) {
-      print('Error getting recent sensor readings: $e');
+      print('Error getting recent sensor data: $e');
       return [];
     }
   }
-  
-  // Device control methods
-  static Future<void> updateDeviceState(String deviceId, bool state) async {
-    // Convert boolean to the expected string status value
-    final String statusValue = state ? 'online' : 'offline';
-    
-    await client
-        .from('devices')
-        .update({'status': statusValue})  // Use string value instead of boolean
-        .eq('device_id', deviceId);
-  }
-  
-  static Future<void> updateDeviceValue(String deviceId, double value) async {
-    await client
-        .from('devices')
-        .update({'value': value})
-        .eq('device_id', deviceId);
-  }
-  
-  static Future<void> toggleActuator(String actuatorId, bool isOn) async {
-    final client = await getClient();
-    
+
+  // ==================== ACTUATORS ====================
+  static Future<List<Map<String, dynamic>>> getActuatorsForRoom(String roomId) async {
     try {
-      // Get existing actuator to preserve settings
-      final response = await client
-        .from('actuators')
-        .select('settings')
-        .eq('actuator_id', actuatorId)
-        .single();
-        
-      Map<String, dynamic> settings = {};
-      if (response != null && response['settings'] != null) {
-        settings = Map<String, dynamic>.from(response['settings']);
-      }
-      
-      // Update with preserved settings
-      await client
-        .from('actuators')
-        .update({
-          'current_state': isOn ? 'on' : 'off',
-          'settings': settings, // Preserve existing settings
-          'updated_at': DateTime.now().toIso8601String()
-        })
-        .eq('actuator_id', actuatorId);
+      return await client.from('actuators').select('*').eq('room_id', roomId);
+    } catch (e) {
+      print('Error getting actuators: $e');
+      return [];
+    }
+  }
+
+  static Future<void> toggleActuator(String roomId, String actuatorType, bool isOn) async {
+    try {
+      await client.from('actuators').update({
+        'current_state': isOn ? 'on' : 'off',
+        'command': isOn ? 'on' : 'off',
+        'updated_at': DateTime.now().toIso8601String(),
+      }).eq('room_id', roomId).eq('actuator_type', actuatorType);
     } catch (e) {
       print('Error toggling actuator: $e');
       throw e;
     }
   }
-  
-  static Future<void> toggleDeviceAndActuator(String deviceId, String actuatorId, bool isOn) async {
-    // Start a transaction to update both records
-    try {
-      // Update device status
-      await updateDeviceState(deviceId, isOn);
-      
-      // Update actuator state
-      if (actuatorId.isNotEmpty) {
-        await toggleActuator(actuatorId, isOn);
-      }
-    } catch (e) {
-      print('Error toggling device and actuator: $e');
-      throw e;
-    }
-  }
-  
-  static Future<void> updateActuatorSettings(String actuatorId, Map<String, dynamic> settings) async {
-    final client = await getClient();
-    
-    try {
-      await client
-        .from('actuators')
-        .update({
-          'settings': settings,
-          'updated_at': DateTime.now().toIso8601String()
-        })
-        .eq('actuator_id', actuatorId);
-        
-    } catch (e) {
-      print('Error updating actuator settings: $e');
-      throw Exception('Failed to update actuator settings: $e');
-    }
-  }
-  
 
-  
-  static Future<List<Map<String, dynamic>>> getClassroomsByDepartment(String departmentId) async {
-    final response = await client
-        .from('classrooms')
-        .select('*')
-        .eq('department_id', departmentId);
-    
-    return response;
-  }
-  
-  static Future<Map<String, dynamic>> getClassroomDetails(String classroomId) async {
+  // ==================== ATTENDANCE ====================
+  static Future<List<Map<String, dynamic>>> getAttendanceForRoom(String roomId, {int limit = 50}) async {
     try {
-      print('🔍 Fetching classroom details for ID: $classroomId');
-      
-      // Get the classroom base details
-      final classroom = await client
-          .from('classrooms')
-          .select('*')
-          .eq('classroom_id', classroomId)
-          .single();
-      
-      print('📊 Base classroom data: $classroom');
-      
-      // Get the devices for the classroom
-      final devices = await client
-          .from('devices')
-          .select('*')
-          .eq('classroom_id', classroomId);
-      
-      print('🔌 Devices: ${devices.length} found');
-      
-      // Get device IDs for this classroom
-      final deviceIds = devices.map((device) => device['device_id']).toList();
-      print('🆔 Device IDs: $deviceIds');
-      
-      // Get sensors and actuators using device_id
-      List<Map<String, dynamic>> sensors = [];
-      if (deviceIds.isNotEmpty) {
-        try {
-          sensors = await client
-              .from('sensors')
-              .select('*')
-              .filter('device_id', 'in', deviceIds);
-          print('📡 Sensors: ${sensors.length} found');
-          
-          // Debug each sensor's fields
-          for (var i = 0; i < sensors.length; i++) {
-            print('📡 Sensor $i: ${sensors[i]}');
-          }
-        } catch (e) {
-          print('❌ Error fetching sensors: $e');
-        }
-      }
-      
-      List<Map<String, dynamic>> actuators = [];
-      if (deviceIds.isNotEmpty) {
-        try {
-          actuators = await client
-              .from('actuators')
-              .select('*')
-              .filter('device_id', 'in', deviceIds);
-          print('🎮 Actuators: ${actuators.length} found');
-        } catch (e) {
-          print('❌ Error fetching actuators: $e');
-        }
-      }
-      
-      List<Map<String, dynamic>> cameras = [];
-      if (deviceIds.isNotEmpty) {
-        try {
-          cameras = await client
-              .from('cameras')
-              .select('*')
-              .filter('device_id', 'in', deviceIds);
-          
-          print('📷 Cameras: ${cameras.length} found');
-          
-          // Print raw camera data for debugging
-          print('📷 Raw cameras data: $cameras');
-          
-          // Add a verification step to check and handle null values
-          for (var camera in cameras) {
-            // Check for null stream_url and set a default if needed
-            if (camera['stream_url'] == null) {
-              print('⚠️ Found null stream_url in camera ${camera['camera_id']}');
-              camera['stream_url'] = ''; // Set to empty string instead of null
-            }
-          }
-          
-          // Debug each camera to find the problematic one
-          for (var i = 0; i < cameras.length; i++) {
-            print('📷 Camera $i: ${cameras[i]}');
-            
-            // Ensure stream_url is not null
-            if (cameras[i]['stream_url'] == null) {
-              print('⚠️ Warning: Camera $i has null stream_url. Setting default value.');
-              cameras[i]['stream_url'] = '';
-            }
-          }
-        } catch (e) {
-          print('❌ Error fetching cameras: $e');
-        }
-      }
-      
-      // Get sensor readings
-      final sensorIds = sensors.map((sensor) => sensor['sensor_id']).toList();
-      print('🆔 Sensor IDs: $sensorIds');
-      
-      List<Map<String, dynamic>> readings = [];
-      if (sensorIds.isNotEmpty) {
-        try {
-          readings = await client
-              .from('sensor_readings')
-              .select('*')
-              .filter('sensor_id', 'in', sensorIds)
-              .order('timestamp', ascending: false)
-              .limit(50);
-          
-          print('📈 Readings: ${readings.length} found');
-          
-          // Enhance sensor readings with sensor type
-          for (var i = 0; i < readings.length; i++) {
-            var reading = readings[i];
-            print('📊 Before enhancement - Reading $i: $reading');
-            
-            // Find the sensor for this reading
-            final sensorId = reading['sensor_id'];
-            final sensor = sensors.firstWhere(
-              (s) => s['sensor_id'] == sensorId,
-              orElse: () => {'sensor_type': 'unknown'}
-            );
-            
-            print('🔍 Matching sensor for reading $i: $sensor');
-            
-            // Add the sensor type to the reading
-            reading['sensor_type'] = sensor['sensor_type'] ?? 'unknown';
-            print('📊 After enhancement - Reading $i: $reading');
-          }
-        } catch (e) {
-          print('❌ Error fetching readings: $e');
-        }
-      }
-      
-      // Combine all the data
-      classroom['devices'] = devices;
-      classroom['sensors'] = sensors;
-      classroom['actuators'] = actuators;
-      classroom['cameras'] = cameras;
-      classroom['sensor_readings'] = readings;
-      
-      print('🏫 Final classroom data structure keys: ${classroom.keys.toList()}');
-      return classroom;
+      return await client
+          .from('attendance')
+          .select('*, students:student_id(name)')
+          .eq('room_id', roomId)
+          .order('timestamp', ascending: false)
+          .limit(limit);
     } catch (e) {
-      print('❌ Error in getClassroomDetails: $e');
-      print('❌ Error stack trace: ${StackTrace.current}');
-      throw e;
-    }
-  }
-  
-  // Get occupancy data for classrooms
-  static Future<List<Map<String, dynamic>>> getOccupancyData() async {
-    final client = await getClient();
-    
-    try {
-      // Query classrooms with their latest motion sensor readings
-      final classroomsResponse = await client
-        .from('classrooms')
-        .select('classroom_id, name, capacity');
-        
-      List<Map<String, dynamic>> classrooms = List<Map<String, dynamic>>.from(classroomsResponse);
-      List<Map<String, dynamic>> result = [];
-      
-      // For each classroom, determine if it's occupied based on motion sensor readings
-      for (var classroom in classrooms) {
-        // Get the devices associated with this classroom
-        final devicesResponse = await client
-          .from('devices')
-          .select('device_id')
-          .eq('classroom_id', classroom['classroom_id'])
-          .eq('device_type', 'sensor');
-          
-        List<Map<String, dynamic>> devices = List<Map<String, dynamic>>.from(devicesResponse);
-        bool isOccupied = false;
-        
-        for (var device in devices) {
-          // Get any motion sensors for this device
-          final sensorResponse = await client
-            .from('sensors')
-            .select('sensor_id')
-            .eq('device_id', device['device_id'])
-            .eq('sensor_type', 'motion');
-            
-          List<Map<String, dynamic>> motionSensors = List<Map<String, dynamic>>.from(sensorResponse);
-          
-          // Check if any motion sensors detected movement in the last 15 minutes
-          for (var sensor in motionSensors) {
-            final DateTime fifteenMinutesAgo = DateTime.now().subtract(const Duration(minutes: 15));
-            
-            final readingResponse = await client
-              .from('sensor_readings')
-              .select('value')
-              .eq('sensor_id', sensor['sensor_id'])
-              .gt('timestamp', fifteenMinutesAgo.toIso8601String())
-              .eq('value', 1) // Motion detected
-              .limit(1);
-              
-            if ((readingResponse as List).isNotEmpty) {
-              isOccupied = true;
-              break;
-            }
-          }
-          
-          if (isOccupied) break;
-        }
-        
-        result.add({
-          'classroom_id': classroom['classroom_id'],
-          'name': classroom['name'],
-          'capacity': classroom['capacity'],
-          'is_occupied': isOccupied,
-        });
-      }
-      
-      return result;
-    } catch (e) {
-      print('Error getting occupancy data: $e');
+      print('Error getting attendance: $e');
       return [];
     }
   }
-  
-  // Alert methods
-  static Future<List<Map<String, dynamic>>> getAlerts({
-  int limit = 20, 
-  String? severity,
-  bool? resolved,
-}) async {
-  final client = await getClient();
-  try {
-    // Start with the base query - using proper join syntax
-    var query = client
-        .from('alerts')
-        .select('''
-          *,
-          devices:device_id (
-            model, 
-            location
-          )
-        ''')
-        ;
-    
-    // Apply filters
-    if (severity != null) {
-      query = query.eq('severity', severity);
-    }
-    
-    if (resolved != null) {
-      query = query.eq('resolved', resolved);
-    }
-    
-    // Apply order and limit at the end
-    final data = await query
-        .order('timestamp', ascending: false)
-        .limit(limit);
-    
-    // Debug the data before returning
-    if (data is List && data.isNotEmpty) {
-      print('First alert data structure:');
-      data[0].forEach((key, value) {
-        print('  $key: ${value.runtimeType} = $value');
-      });
-    }
-    
-    return List<Map<String, dynamic>>.from(data);
-  } catch (e) {
-    print('Error fetching alerts: $e');
-    throw Exception('Failed to fetch alerts: $e');
-  }
-}
 
-static Future<List<Map<String, dynamic>>> getRecentAlerts({int limit = 5}) async {
-  final client = await getClient();
-  try {
-    String query = '*';
-    
-    // Check if devices table exists before adding the join
+  // ==================== OCCUPANCY ====================
+  static Future<Map<String, dynamic>?> getOccupancyForRoom(String roomId) async {
     try {
-      await client.from('devices').select('model').limit(1);
-      query = '*,devices:device_id(model,location)';
+      return await client
+          .from('room_occupancy')
+          .select('*')
+          .eq('room_id', roomId)
+          .order('timestamp', ascending: false)
+          .limit(1)
+          .maybeSingle();
     } catch (e) {
-      print('Warning: devices table might be missing, proceeding without join');
+      print('Error getting occupancy: $e');
+      return null;
     }
-    
-    // Use the modified query
-    final data = await client
-        .from('alerts')
-        .select(query)
-        .order('timestamp', ascending: false)
-        .limit(limit);
-    
-    return List<Map<String, dynamic>>.from(data);
-  } catch (e) {
-    print('Error fetching recent alerts: $e');
-    throw Exception('Failed to fetch recent alerts: $e');
   }
-}
 
-// Mark an alert as resolved
-static Future<bool> resolveAlert(int alertId) async {
-  final client = await getClient();
-  try {
-    // Get current timestamp for the resolved_at field
-    final now = DateTime.now().toIso8601String();
-    
-    // Get current user ID
-    final userId = client.auth.currentUser?.id;
-    
-    // Update the alert in the database
-    final response = await client
-        .from('alerts')
-        .update({
-          'resolved': true,
-          'resolved_at': now,
-          'resolved_by_user_id': userId,
-        })
-        .eq('alert_id', alertId);
-    
-    print('Alert $alertId marked as resolved by user $userId');
-    return true;
-  } catch (e) {
-    print('Error resolving alert: $e');
-    return false;
+  static Stream<List<Map<String, dynamic>>> streamOccupancyForRoom(String roomId) {
+    return client
+        .from('room_occupancy')
+        .stream(primaryKey: ['id'])
+        .eq('room_id', roomId);
   }
-}
 
-  // Camera feed URL
-  static String getCameraFeedUrl(String cameraId) {
-    return '$supabaseUrl/edge/v1/camera-stream?camera_id=$cameraId';
+  // ==================== ALERTS ====================
+  static Future<List<Map<String, dynamic>>> getAlerts({String? roomId, int limit = 50}) async {
+    try {
+      var query = client.from('alerts').select('*').order('timestamp', ascending: false).limit(limit);
+      if (roomId != null) query = query.eq('room_id', roomId);
+      return await query;
+    } catch (e) {
+      print('Error fetching alerts: $e');
+      return [];
+    }
+  }
+
+  static Future<List<Map<String, dynamic>>> getRecentAlerts({int limit = 5}) async {
+    return getAlerts(limit: limit);
+  }
+
+  static Future<bool> acknowledgeAlert(int alertId) async {
+    try {
+      await client.from('alerts').update({
+        'acknowledged': true,
+      }).eq('id', alertId);
+      return true;
+    } catch (e) {
+      print('Error acknowledging alert: $e');
+      return false;
+    }
+  }
+
+  static Stream<List<Map<String, dynamic>>> streamAlerts() {
+    return client.from('alerts').stream(primaryKey: ['id']);
+  }
+
+  // ==================== DEVICE STATUS ====================
+  static Future<List<Map<String, dynamic>>> getDeviceStatusForRoom(String roomId) async {
+    try {
+      return await client.from('device_status').select('*').eq('room_id', roomId);
+    } catch (e) {
+      print('Error getting device status: $e');
+      return [];
+    }
+  }
+
+  // ==================== CAMERA / STREAM ====================
+  static Future<String?> getStreamUrlForRoom(String roomId) async {
+    try {
+      final room = await client.from('rooms').select('stream_ws_url').eq('room_id', roomId).single();
+      return room['stream_ws_url']?.toString();
+    } catch (e) {
+      print('Error getting stream URL: $e');
+      return null;
+    }
+  }
+
+  static String buildStreamWsUrl(String streamWsUrl, String token) {
+    final base = streamWsUrl.replaceAll(RegExp(r'\?.*$'), '');
+    return '$base?token=$token';
+  }
+
+  // ==================== STUDENTS ====================
+  static Future<List<Map<String, dynamic>>> getStudents() async {
+    try {
+      return await client.from('students').select('*').order('name');
+    } catch (e) {
+      print('Error getting students: $e');
+      return [];
+    }
+  }
+
+  static Future<Map<String, dynamic>?> getStudentByRfid(String rfidUid) async {
+    try {
+      final card = await client
+          .from('rfid_cards')
+          .select('student_id, students:student_id(*)')
+          .eq('rfid_uid', rfidUid)
+          .single();
+      return card['students'];
+    } catch (e) {
+      return null;
+    }
   }
 
   static getCameraDetails(int cameraId) {}
@@ -1375,82 +1078,61 @@ static Future<int> getUnresolvedAlertCount() async {
   }
 }
 
-// Get student attendance data by date
+  // ==================== LEGACY COMPATIBILITY STUBS ====================
+  static Future<Map<String, dynamic>> getClassroomDetails(String classroomId) async {
+    return getRoomDetails(classroomId);
+  }
+
+  static Future<List<Map<String, dynamic>>> getDepartments() async {
+    return [];
+  }
+
   static Future<List<Map<String, dynamic>>> getAttendanceByDate(DateTime date) async {
-    final client = await getClient();
-    try {
-      final response = await client
-          .from('daily_attendance')
-          .select('''
-            attendance_id,
-            student_id,
-            attendance_date,
-            check_in_time,
-            students!inner(name, email)
-          ''')
-          .eq('attendance_date', date.toIso8601String().split('T')[0])
-          .order('check_in_time', ascending: true);
-          
-      // Transform the response to include student name directly
-      return List<Map<String, dynamic>>.from(response.map((record) {
-        return {
-          'attendance_id': record['attendance_id'],
-          'student_id': record['student_id'],
-          'attendance_date': record['attendance_date'],
-          'check_in_time': record['check_in_time'],
-          'student_name': record['students']['name'],
-        };
-      }));
-    } catch (e) {
-      print('Error getting attendance data: $e');
-      return [];
-    }
+    return [];
   }
-  
-  // Get all students
-  static Future<List<Map<String, dynamic>>> getStudents() async {
-    final client = await getClient();
-    try {
-      final response = await client
-          .from('students')
-          .select('''
-            student_id,
-            name,
-            email,
-            rfid_cards!left(rfid_uid)
-          ''')
-          .order('name');
-          
-      // Transform the response to flatten structure
-      return List<Map<String, dynamic>>.from(response.map((record) {
-        return {
-          'student_id': record['student_id'],
-          'name': record['name'],
-          'email': record['email'],
-          'rfid_uid': record['rfid_cards'] != null ? 
-                     record['rfid_cards']['rfid_uid'] : null,
-        };
-      }));
-    } catch (e) {
-      print('Error getting students: $e');
-      return [];
-    }
-  }
-  
-  // Record student attendance
+
   static Future<bool> recordAttendance(int studentId, DateTime date) async {
-    final client = await getClient();
-    try {
-      final dateString = date.toIso8601String().split('T')[0];
-      await client.from('daily_attendance').upsert({
-        'student_id': studentId,
-        'attendance_date': dateString,
-        'check_in_time': DateTime.now().toIso8601String(),
-      }, onConflict: 'student_id, attendance_date');
-      return true;
-    } catch (e) {
-      print('Error recording attendance: $e');
-      return false;
-    }
+    return false;
+  }
+
+  static Future<bool> resolveAlert(int alertId) async {
+    return acknowledgeAlert(alertId);
+  }
+
+  static int? getCurrentUserId() {
+    final user = getCurrentUser();
+    return user != null ? int.tryParse(user.id) : null;
+  }
+
+  static Future<List<Map<String, dynamic>>> getRecentSensorReadings({int limit = 100}) async {
+    return getRecentSensorData(limit: limit);
+  }
+
+  static Future<void> toggleDeviceAndActuator(String deviceId, String actuatorId, bool isOn) async {
+    // Legacy no-op
+  }
+
+  static Future<void> updateActuatorSettings(String actuatorId, Map<String, dynamic> settings) async {
+    // Legacy no-op
+  }
+
+  static Future<void> updateDeviceState(String deviceId, bool state) async {
+    // Legacy no-op
+  }
+
+  static Future<void> updateDeviceValue(String deviceId, double value) async {
+    // Legacy no-op
+  }
+
+  static Future<List<Map<String, dynamic>>> getCameras() async {
+    return [];
+  }
+
+  static Future<List<Map<String, dynamic>>> getActuators() async {
+    return [];
+  }
+
+  static Future<List<Map<String, dynamic>>> getSensors() async {
+    return [];
   }
 }

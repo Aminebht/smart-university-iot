@@ -1,33 +1,27 @@
-import 'package:flutter/material.dart';
-
 class StudentModel {
-  final int studentId;
+  final int id;
   final String name;
-  final String email;
-  final String? rfidUid;
-  
+  final String? email;
+
   StudentModel({
-    required this.studentId,
+    required this.id,
     required this.name,
-    required this.email,
-    this.rfidUid,
+    this.email,
   });
-  
+
   factory StudentModel.fromJson(Map<String, dynamic> json) {
     return StudentModel(
-      studentId: json['student_id'],
-      name: json['name'],
-      email: json['email'],
-      rfidUid: json['rfid_uid'],
+      id: json['id'] ?? 0,
+      name: json['name'] ?? 'Unknown',
+      email: json['email']?.toString(),
     );
   }
-  
+
   Map<String, dynamic> toJson() {
     return {
-      'student_id': studentId,
+      'id': id,
       'name': name,
       'email': email,
-      'rfid_uid': rfidUid,
     };
   }
 }

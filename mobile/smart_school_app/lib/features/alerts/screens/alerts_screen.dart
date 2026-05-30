@@ -44,20 +44,20 @@ class _AlertsScreenState extends State<AlertsScreen> with SingleTickerProviderSt
   
   Future<void> _loadAlerts() async {
     final provider = Provider.of<AlertsProvider>(context, listen: false);
-    
+
     switch (_tabController.index) {
       case 0: // All alerts
         await provider.loadAlerts();
         break;
-      case 1: // Active (unresolved) alerts
-        await provider.loadAlerts(resolved: false);
+      case 1: // Active (unacknowledged) alerts
+        await provider.loadAlerts();
         break;
-      case 2: // Resolved alerts
-        await provider.loadAlerts(resolved: true);
+      case 2: // Acknowledged alerts
+        await provider.loadAlerts();
         break;
     }
   }
-  
+
   String _getTabTitle(int index) {
     switch (index) {
       case 0:
@@ -65,12 +65,12 @@ class _AlertsScreenState extends State<AlertsScreen> with SingleTickerProviderSt
       case 1:
         return 'Active Alerts';
       case 2:
-        return 'Resolved Alerts';
+        return 'Acknowledged';
       default:
         return 'Alerts';
     }
   }
-  
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -81,7 +81,7 @@ class _AlertsScreenState extends State<AlertsScreen> with SingleTickerProviderSt
           tabs: const [
             Tab(text: 'All'),
             Tab(text: 'Active'),
-            Tab(text: 'Resolved'),
+            Tab(text: 'Acknowledged'),
           ],
         ),
       ),
@@ -89,20 +89,20 @@ class _AlertsScreenState extends State<AlertsScreen> with SingleTickerProviderSt
         controller: _tabController,
         children: [
           _buildAlertsList(null),      // All alerts
-          _buildAlertsList(false),     // Active alerts
-          _buildAlertsList(true),      // Resolved alerts
+          _buildAlertsList(false),     // Active (unacknowledged)
+          _buildAlertsList(true),      // Acknowledged
         ],
       ),
     );
   }
-  
-  Widget _buildAlertsList(bool? resolved) {
+
+  Widget _buildAlertsList(bool? acknowledged) {
     return Consumer<AlertsProvider>(
       builder: (context, provider, child) {
         if (provider.isLoading) {
           return const Center(child: CircularProgressIndicator());
         }
-        
+
         if (provider.errorMessage != null) {
           return Center(
             child: Column(
@@ -125,12 +125,12 @@ class _AlertsScreenState extends State<AlertsScreen> with SingleTickerProviderSt
             ),
           );
         }
-        
+
         List<AlertModel> filteredAlerts = provider.alerts;
-        if (resolved != null) {
-          filteredAlerts = filteredAlerts.where((alert) => alert.resolved == resolved).toList();
+        if (acknowledged != null) {
+          filteredAlerts = filteredAlerts.where((alert) => alert.acknowledged == acknowledged).toList();
         }
-        
+
         if (filteredAlerts.isEmpty) {
           return Center(
             child: Column(
@@ -139,10 +139,10 @@ class _AlertsScreenState extends State<AlertsScreen> with SingleTickerProviderSt
                 Icon(Icons.notifications_off, size: 64, color: Colors.grey.shade400),
                 const SizedBox(height: 16),
                 Text(
-                  resolved == null
+                  acknowledged == null
                       ? 'No alerts found'
-                      : resolved
-                          ? 'No resolved alerts'
+                      : acknowledged
+                          ? 'No acknowledged alerts'
                           : 'No active alerts',
                   style: TextStyle(fontSize: 18, color: Colors.grey.shade700),
                 ),
@@ -155,7 +155,7 @@ class _AlertsScreenState extends State<AlertsScreen> with SingleTickerProviderSt
             ),
           );
         }
-        
+
         return RefreshIndicator(
           onRefresh: _loadAlerts,
           child: ListView.builder(
@@ -169,19 +169,19 @@ class _AlertsScreenState extends State<AlertsScreen> with SingleTickerProviderSt
       },
     );
   }
-  
+
   Widget _buildAlertCard(BuildContext context, AlertModel alert, AlertsProvider provider) {
     final severityColor = alert.severityColor;
     final severityIcon = alert.alertIcon;
     final formatter = DateFormat('MMM d, yyyy • h:mm a');
-    
+
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       elevation: 2,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
         side: BorderSide(
-          color: alert.resolved ? Colors.grey.shade300 : severityColor.withOpacity(0.5),
+          color: alert.acknowledged ? Colors.grey.shade300 : severityColor.withOpacity(0.5),
           width: 1,
         ),
       ),
@@ -211,7 +211,7 @@ class _AlertsScreenState extends State<AlertsScreen> with SingleTickerProviderSt
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        alert.alertType,
+                        alert.title,
                         style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
@@ -230,8 +230,8 @@ class _AlertsScreenState extends State<AlertsScreen> with SingleTickerProviderSt
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: alert.resolved 
-                        ? Colors.green.shade50 
+                    color: alert.acknowledged
+                        ? Colors.green.shade50
                         : severityColor.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -239,15 +239,15 @@ class _AlertsScreenState extends State<AlertsScreen> with SingleTickerProviderSt
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
-                        alert.resolved ? Icons.check_circle : Icons.radio_button_unchecked,
+                        alert.acknowledged ? Icons.check_circle : Icons.radio_button_unchecked,
                         size: 12,
-                        color: alert.resolved ? Colors.green : severityColor,
+                        color: alert.acknowledged ? Colors.green : severityColor,
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        alert.resolved ? 'Resolved' : alert.severity.toUpperCase(),
+                        alert.acknowledged ? 'Acknowledged' : alert.severity.toUpperCase(),
                         style: TextStyle(
-                          color: alert.resolved ? Colors.green : severityColor,
+                          color: alert.acknowledged ? Colors.green : severityColor,
                           fontSize: 12,
                           fontWeight: FontWeight.bold,
                         ),
@@ -257,37 +257,37 @@ class _AlertsScreenState extends State<AlertsScreen> with SingleTickerProviderSt
                 ),
               ],
             ),
-            
+
             const SizedBox(height: 16),
-            
+
             // Alert message
-            Text(
-              alert.message,
-              style: const TextStyle(fontSize: 14),
-            ),
-            
+            if (alert.message != null)
+              Text(
+                alert.message!,
+                style: const TextStyle(fontSize: 14),
+              ),
+
             const SizedBox(height: 16),
-            
-            // Device info and action
+
+            // Room info and action
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  'Device #${alert.deviceId}',
+                  'Room: ${alert.roomId}',
                   style: TextStyle(
                     color: Colors.grey.shade700,
                     fontSize: 14,
                   ),
                 ),
-                if (!alert.resolved)
+                if (!alert.acknowledged)
                   ElevatedButton(
                     onPressed: () async {
-                      // Show confirmation dialog
                       final confirm = await showDialog<bool>(
                         context: context,
                         builder: (context) => AlertDialog(
-                          title: const Text('Resolve Alert'),
-                          content: const Text('Are you sure you want to mark this alert as resolved?'),
+                          title: const Text('Acknowledge Alert'),
+                          content: const Text('Mark this alert as acknowledged?'),
                           actions: [
                             TextButton(
                               onPressed: () => Navigator.pop(context, false),
@@ -295,14 +295,14 @@ class _AlertsScreenState extends State<AlertsScreen> with SingleTickerProviderSt
                             ),
                             TextButton(
                               onPressed: () => Navigator.pop(context, true),
-                              child: const Text('Resolve'),
+                              child: const Text('Acknowledge'),
                             ),
                           ],
                         ),
                       );
-                      
+
                       if (confirm == true) {
-                        await provider.resolveAlert(alert.alertId);
+                        await provider.acknowledgeAlert(alert.id);
                       }
                     },
                     style: ElevatedButton.styleFrom(
@@ -311,23 +311,10 @@ class _AlertsScreenState extends State<AlertsScreen> with SingleTickerProviderSt
                       textStyle: const TextStyle(fontSize: 14),
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     ),
-                    child: const Text('Resolve'),
+                    child: const Text('Acknowledge'),
                   ),
               ],
             ),
-            
-            if (alert.resolved && alert.resolvedAt != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Text(
-                  'Resolved on ${DateFormat('MMM d, yyyy').format(alert.resolvedAt!.toLocal())}',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey.shade600,
-                    fontStyle: FontStyle.italic,
-                  ),
-                ),
-              ),
           ],
         ),
       ),

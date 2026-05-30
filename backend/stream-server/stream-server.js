@@ -7,23 +7,58 @@ require("dotenv").config();
 const STREAM_PORT = process.env.STREAM_PORT || 3000;
 const INGEST_PORT = process.env.INGEST_PORT || 8080;
 const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY;
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-const stats = {
-  esp32Connected: false,
-  viewersCount: 0,
-  totalFrames: 0,
-  fps: 0,
-  startTime: Date.now()
-};
+// Per-room frame store: roomId -> { lastFrame, lastFrameTime, camWs, online }
+const rooms = new Map();
 
-let lastFrame = null;
-let lastFrameTime = 0;
-let camOnline = false;
+function getRoom(roomId) {
+  if (!rooms.has(roomId)) {
+    rooms.set(roomId, {
+      roomId,
+      lastFrame: null,
+      lastFrameTime: 0,
+      camWs: null,
+      online: false,
+      totalFrames: 0,
+      viewers: 0,
+      startTime: Date.now()
+    });
+  }
+  return rooms.get(roomId);
+}
 
-// ===== INGEST (ESP32-CAM → Serveur) =====
+function setRoomOnline(roomId, online) {
+  const room = getRoom(roomId);
+  const wasOnline = room.online;
+  room.online = online;
+
+  if (wasOnline && !online) {
+    console.log(`🚨 [${roomId}] CAM OFFLINE (no frame for 30s)`);
+    updateDeviceStatus(roomId, 'offline');
+  }
+  if (!wasOnline && online) {
+    console.log(`✅ [${roomId}] CAM ONLINE`);
+    updateDeviceStatus(roomId, 'online');
+  }
+}
+
+async function updateDeviceStatus(roomId, status) {
+  try {
+    await supabase.from('device_status').update({
+      room_id: roomId,
+      status,
+      last_seen: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    }).eq('device_id', `cam_${roomId}`);
+  } catch (e) {
+    // silently ignore Supabase errors
+  }
+}
+
+// ===== INGEST (ESP32-CAM → Server) =====
 const ingestWss = new WebSocket.Server({
   port: INGEST_PORT,
   path: "/esp32",
@@ -32,59 +67,71 @@ const ingestWss = new WebSocket.Server({
 });
 
 ingestWss.on("connection", (ws, req) => {
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  const roomId = url.searchParams.get("room_id") || 'salle1';
   const clientIp = req.socket.remoteAddress;
-  console.log(`[INGEST] 📸 ESP32-CAM connected from ${clientIp}`);
-  stats.esp32Connected = true;
-  camOnline = true;
+
+  console.log(`[INGEST] 📸 [${roomId}] ESP32-CAM connected from ${clientIp}`);
+
+  const room = getRoom(roomId);
+  room.camWs = ws;
+  setRoomOnline(roomId, true);
 
   ws.on("message", (data) => {
     if (!Buffer.isBuffer(data) || data.length < 2 || data[0] !== 0xFF || data[1] !== 0xD8) {
       return;
     }
 
-    lastFrame = data;
-    lastFrameTime = Date.now();
-    stats.totalFrames++;
-    
-    const elapsed = (Date.now() - stats.startTime) / 1000;
-    stats.fps = (stats.totalFrames / elapsed).toFixed(1);
+    room.lastFrame = data;
+    room.lastFrameTime = Date.now();
+    room.totalFrames++;
 
+    const elapsed = (Date.now() - room.startTime) / 1000;
+    const fps = (room.totalFrames / elapsed).toFixed(1);
+
+    // Broadcast to authenticated viewers for this room
     let sentCount = 0;
     viewerWss.clients.forEach((client) => {
-      if (client.readyState === WebSocket.OPEN && client.authenticated) {
+      if (
+        client.readyState === WebSocket.OPEN &&
+        client.authenticated &&
+        client.roomId === roomId
+      ) {
         client.send(data, { binary: true });
         sentCount++;
       }
     });
 
-    if (stats.totalFrames % 300 === 0) {
-      console.log(`[INGEST] 📊 Frame #${stats.totalFrames} | ${data.length} bytes | ${sentCount} viewers | ${stats.fps} FPS`);
+    if (room.totalFrames % 300 === 0) {
+      console.log(`[INGEST] [${roomId}] Frame #${room.totalFrames} | ${data.length} bytes | ${sentCount} viewers | ${fps} FPS`);
     }
   });
 
   ws.on("close", () => {
-    console.log("[INGEST] ❌ ESP32-CAM disconnected");
-    stats.esp32Connected = false;
-    camOnline = false;
+    console.log(`[INGEST] ❌ [${roomId}] ESP32-CAM disconnected`);
+    room.camWs = null;
+    setRoomOnline(roomId, false);
   });
 
-  ws.on("error", (err) => console.error("[INGEST] Error:", err.message));
+  ws.on("error", (err) => console.error(`[INGEST] [${roomId}] Error:`, err.message));
 });
 
-console.log(`[INGEST] 🚀 WebSocket ingest on ws://0.0.0.0:${INGEST_PORT}/esp32`);
+console.log(`[INGEST] 🚀 WebSocket ingest on ws://0.0.0.0:${INGEST_PORT}/esp32?room_id=<room_id>`);
 
-// ===== VIEWER (Clients authentifiés) =====
+// ===== VIEWER (Authenticated clients) =====
 const app = express();
 const server = http.createServer(app);
 
 app.get("/health", (req, res) => {
-  res.json({
-    status: "ok",
-    esp32Connected: stats.esp32Connected,
-    viewersCount: stats.viewersCount,
-    fps: stats.fps,
-    uptime: Math.floor((Date.now() - stats.startTime) / 1000)
+  const roomStats = {};
+  rooms.forEach((r, id) => {
+    roomStats[id] = {
+      online: r.online,
+      viewers: r.viewers,
+      totalFrames: r.totalFrames
+    };
   });
+  res.json({ status: "ok", rooms: roomStats, uptime: Math.floor((Date.now() - Date.now()) / 1000) });
 });
 
 app.get("/", (req, res) => {
@@ -94,20 +141,25 @@ app.get("/", (req, res) => {
     <head><title>Smart University - Stream Test</title></head>
     <body>
       <h1>Test Stream ESP32-CAM</h1>
+      <label>Room ID: <input id="roomId" value="salle1" /></label>
+      <button onclick="connect()">Connect</button>
       <img id="stream" style="max-width:100%;border:2px solid #333;" />
-      <div id="status">Connexion...</div>
+      <div id="status">Waiting...</div>
       <script>
-        const ws = new WebSocket('ws://'+location.host+'/stream?token=test');
-        const img = document.getElementById('stream');
-        const status = document.getElementById('status');
-        ws.binaryType = 'arraybuffer';
-        
-        ws.onopen = () => { status.textContent = 'Connecté'; };
-        ws.onmessage = (e) => {
-          const blob = new Blob([e.data], {type: 'image/jpeg'});
-          img.src = URL.createObjectURL(blob);
-        };
-        ws.onclose = () => { status.textContent = 'Déconnecté'; };
+        let ws;
+        function connect() {
+          const roomId = document.getElementById('roomId').value;
+          ws = new WebSocket('ws://'+location.host+'/stream?token=test&room_id='+roomId);
+          const img = document.getElementById('stream');
+          const status = document.getElementById('status');
+          ws.binaryType = 'arraybuffer';
+          ws.onopen = () => { status.textContent = 'Connected to '+roomId; };
+          ws.onmessage = (e) => {
+            const blob = new Blob([e.data], {type: 'image/jpeg'});
+            img.src = URL.createObjectURL(blob);
+          };
+          ws.onclose = () => { status.textContent = 'Disconnected'; };
+        }
       </script>
     </body>
     </html>
@@ -123,6 +175,7 @@ const viewerWss = new WebSocket.Server({
 viewerWss.on("connection", async (ws, req) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const token = url.searchParams.get("token");
+  const roomId = url.searchParams.get("room_id") || 'salle1';
 
   if (!token) {
     ws.close(1008, "Missing token");
@@ -141,23 +194,27 @@ viewerWss.on("connection", async (ws, req) => {
     ws.authenticated = true;
   }
 
-  stats.viewersCount++;
-  console.log(`[VIEWER] 🖥️ Connected | Viewers: ${stats.viewersCount}`);
+  ws.roomId = roomId;
+  const room = getRoom(roomId);
+  room.viewers++;
+  console.log(`[VIEWER] 🖥️ [${roomId}] Connected | Viewers: ${room.viewers}`);
 
-  if (lastFrame) {
-    ws.send(lastFrame, { binary: true });
+  // Send last frame immediately if available
+  if (room.lastFrame) {
+    ws.send(room.lastFrame, { binary: true });
   }
 
   ws.isAlive = true;
   ws.on("pong", () => { ws.isAlive = true; });
 
   ws.on("close", () => {
-    stats.viewersCount--;
-    console.log(`[VIEWER] 👋 Disconnected | Viewers: ${stats.viewersCount}`);
+    room.viewers--;
+    console.log(`[VIEWER] 👋 [${roomId}] Disconnected | Viewers: ${room.viewers}`);
   });
 });
 
-const heartbeatInterval = setInterval(() => {
+// Heartbeat for viewers
+setInterval(() => {
   viewerWss.clients.forEach((ws) => {
     if (!ws.isAlive) {
       ws.terminate();
@@ -168,21 +225,14 @@ const heartbeatInterval = setInterval(() => {
   });
 }, 30000);
 
-// CAM status detection (pas de heartbeat MQTT pour le CAM)
+// Camera offline detection per room
 setInterval(() => {
-  const age = Date.now() - lastFrameTime;
-  const wasOnline = camOnline;
-  
-  if (age > 30000) {
-    camOnline = false;
-  }
-  
-  if (wasOnline && !camOnline) {
-    console.log("🚨 ESP32-CAM OFFLINE (no frame for 30s)");
-  }
-  if (!wasOnline && camOnline) {
-    console.log("✅ ESP32-CAM ONLINE");
-  }
+  rooms.forEach((room, roomId) => {
+    const age = Date.now() - room.lastFrameTime;
+    if (room.online && age > 30000) {
+      setRoomOnline(roomId, false);
+    }
+  });
 }, 15000);
 
 server.listen(STREAM_PORT, () => {

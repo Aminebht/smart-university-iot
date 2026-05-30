@@ -121,7 +121,7 @@ class AlertListItem extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              alert.message,
+              alert.message ?? '',
               style: const TextStyle(
             fontSize: 12,
             color: AppColors.textSecondary,

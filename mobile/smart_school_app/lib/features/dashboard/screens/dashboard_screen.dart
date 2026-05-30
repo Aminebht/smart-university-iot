@@ -1,15 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:smart_school/features/department/screens/department_detail_screen.dart';
-import 'package:smart_school/features/navigation/screens/bottom_nav_container.dart';
 import '../../../core/constants/app_constants.dart';
+import '../../../core/models/room_model.dart';
 import '../../../core/widgets/custom_button.dart';
-import '../../../core/utils/app_utils.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../providers/dashboard_provider.dart';
-import '../widgets/department_card.dart';
 import '../widgets/stats_card.dart';
 import '../widgets/recent_alerts.dart';
+import '../../navigation/screens/room_detail_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -56,8 +54,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   
                   const SizedBox(height: 24),
                   
-                  // Departments section
-                  _buildDepartmentsSection(dashboardProvider),
+                  // Rooms section
+                  _buildRoomsSection(dashboardProvider),
                   
                   const SizedBox(height: 24),
                   
@@ -137,9 +135,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildDepartmentsSection(DashboardProvider dashboardProvider) {
-    final departments = dashboardProvider.departments;
-    
+  Widget _buildRoomsSection(DashboardProvider dashboardProvider) {
+    final rooms = dashboardProvider.rooms;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -149,7 +147,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text(
-                'Departments',
+                'Rooms',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -158,7 +156,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
               TextButton(
                 onPressed: () {
-                  Navigator.pushNamed(context, AppRoutes.department);
+                  Navigator.pushNamed(context, AppRoutes.room);
                 },
                 child: const Text('View All'),
               ),
@@ -166,13 +164,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ),
         const SizedBox(height: 8),
-        
-        if (departments.isEmpty)
+
+        if (rooms.isEmpty)
           const Padding(
             padding: EdgeInsets.all(16),
             child: Center(
               child: Text(
-                'No departments found',
+                'No rooms found',
                 style: TextStyle(color: AppColors.textSecondary),
               ),
             ),
@@ -188,20 +186,43 @@ class _DashboardScreenState extends State<DashboardScreen> {
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: departments.length > 4 ? 4 : departments.length,
+            itemCount: rooms.length > 4 ? 4 : rooms.length,
             itemBuilder: (context, index) {
-              return DepartmentCard(
-                department: departments[index],
-                onTap: () {
-                 Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => DepartmentDetailScreen(
-                      departmentId: departments[index].departmentId.toString(),
+              final room = rooms[index];
+              return Card(
+                elevation: 2,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                child: InkWell(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => RoomDetailScreen(roomId: room.roomId),
+                      ),
+                    );
+                  },
+                  borderRadius: BorderRadius.circular(12),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.meeting_room, size: 32, color: AppColors.primary),
+                        const SizedBox(height: 8),
+                        Text(
+                          room.name,
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Cap: ${room.capacity}',
+                          style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                        ),
+                      ],
                     ),
                   ),
-                );
-                },
+                ),
               );
             },
           ),

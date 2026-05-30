@@ -4,9 +4,12 @@ import 'package:flutter/material.dart';
 const String appName = 'Smart School';
 const String appVersion = '0.1.0';
 
-// Supabase configuration
-const String supabaseUrl = 'https://wkvkynmbnqycxnkfdvip.supabase.co'; // Replace with your Supabase URL
-const String supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Indrdmt5bm1ibnF5Y3hua2ZkdmlwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDMyMzE4OTUsImV4cCI6MjA1ODgwNzg5NX0.kj95zrdFOJaBRZoJ4SBRcv2TDfC5rQeNliaCubsM6Sk'; // Replace with your Supabase anon key
+// Supabase configuration — new Smart University project
+const String supabaseUrl = 'https://xfkoghbyrnijtkvrvjsc.supabase.co';
+const String supabaseAnonKey = 'sb_publishable_yebX_K19ej805y4-VIpswg_XBF8n5E6';
+
+// Stream server base URL (room-specific ws path appended per-room)
+const String streamServerBaseUrl = 'ws://192.168.1.100:3000';
 
 // Theme colors
 class AppColors {
@@ -34,15 +37,23 @@ enum DeviceStatus {
 
 // Routes
 class AppRoutes {
-  // Existing routes
+  // Auth routes
   static const String splash = '/splash';
   static const String login = '/login';
   static const String signup = '/signup';
   static const String resetPassword = '/reset-password';
+
+  // Main app routes
   static const String dashboard = '/dashboard';
-  static const String department = '/department';
-  static const String classroom = '/classroom';
+  static const String room = '/room';
   static const String camera = '/camera';
+  static const String presence = '/presence';
+  static const String alerts = '/alerts';
+  static const String settings = '/settings';
+
+  // Legacy routes (hidden from nav but preserved)
+  static const String department = '/department';
+  static const String classroom = '/classroom'; // deprecated, use /room
   static const String security = '/security';
   static const String securityEvents = '/security/events';
   static const String alarmSystems = '/alarm-systems';
@@ -50,8 +61,5 @@ class AppRoutes {
   static const String alarmEdit = '/alarm-edit';
   static const String alarmEvents = '/alarm-events';
   static const String alarmRules = '/alarm-rules';
-  static const String alerts = '/alerts';
-  // New routes
-  static const String studentPresence = '/student-presence';
-  static const String settings = '/settings';
+  static const String studentPresence = '/student-presence'; // deprecated, use /presence
 }

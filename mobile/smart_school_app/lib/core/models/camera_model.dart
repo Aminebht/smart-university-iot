@@ -1,44 +1,38 @@
-import 'dart:async';
-import 'dart:convert';
-import 'package:flutter/material.dart';
-
+/// Lightweight camera metadata; actual streaming is done via WebSocket
+to the stream-server URL stored per-room.
 class CameraModel {
-  final int cameraId;
-  final String name;
+  final int? cameraId;
+  final String? name;
   final String streamUrl;
   final bool isActive;
-  final String description;
-  final bool motionDetectionEnabled;
-  final bool isRecording;
-  final int? deviceId;
-  final int? classroomId;
-  final String? classroomName;
+  final String? roomId;
+  final String? roomName;
 
   CameraModel({
-    required this.cameraId,
-    required this.name,
+    this.cameraId,
+    this.name,
     required this.streamUrl,
-    required this.isActive,
-    required this.description,
-    required this.motionDetectionEnabled,
-    required this.isRecording,
-    this.deviceId,
-    this.classroomId,
-    this.classroomName,
+    this.isActive = true,
+    this.roomId,
+    this.roomName,
   });
+
+  factory CameraModel.fromRoomStreamUrl(String roomId, String streamUrl) {
+    return CameraModel(
+      roomId: roomId,
+      streamUrl: streamUrl,
+      name: 'Camera — $roomId',
+    );
+  }
 
   factory CameraModel.fromJson(Map<String, dynamic> json) {
     return CameraModel(
-      cameraId: json['camera_id'] ?? json['id'] ?? 0,
-      name: json['name'] ?? 'Unnamed Camera',
-      streamUrl: json['stream_url'] ?? json['streamUrl'] ?? '',
-      isActive: json['is_active'] ?? json['isActive'] ?? true,
-      description: json['description'] ?? '',
-      motionDetectionEnabled: json['motion_detection_enabled'] ?? false,
-      isRecording: json['is_recording'] ?? false,
-      deviceId: json['device_id'] ?? json['deviceId'],
-      classroomId: json['classroom_id'] ?? json['classroomId'],
-      classroomName: json['classroom_name'] ?? json['classroomName'],
+      cameraId: json['camera_id'] ?? json['id'],
+      name: json['name']?.toString(),
+      streamUrl: json['stream_url']?.toString() ?? '',
+      isActive: json['is_active'] ?? true,
+      roomId: json['room_id']?.toString() ?? json['classroom_id']?.toString(),
+      roomName: json['room_name']?.toString() ?? json['classroom_name']?.toString(),
     );
   }
 
@@ -48,57 +42,7 @@ class CameraModel {
       'name': name,
       'stream_url': streamUrl,
       'is_active': isActive,
-      'description': description,
-      'motion_detection_enabled': motionDetectionEnabled,
-      'is_recording': isRecording,
-      'device_id': deviceId,
-      'classroom_id': classroomId,
+      'room_id': roomId,
     };
-  }
-}
-
-class CameraProvider extends ChangeNotifier {
-  bool _isFullscreen = false;
-  bool _isRecording = false;
-  bool _isPanning = false;
-  bool _isLoading = false;
-  double _zoomLevel = 1.0;
-  String _recordingDuration = "00:00";
-  Timer? _recordingTimer;
-  int _recordingSeconds = 0;
-  String? _errorMessage;
-  dynamic _camera;
-
-  bool get isLoading => _isLoading;
-  String? get errorMessage => _errorMessage;
-  dynamic get camera => _camera;
-
-  bool get isFullscreen => _isFullscreen;
-  bool get isRecording => _isRecording;
-  bool get isPanning => _isPanning;
-  double get zoomLevel => _zoomLevel;
-  String get recordingDuration => _recordingDuration;
-
-  Future<void> loadCamera(int cameraId) async {
-    _isLoading = true;
-    _errorMessage = null;
-    notifyListeners();
-
-    try {
-      await Future.delayed(const Duration(seconds: 1));
-
-      _camera = {
-        'id': cameraId,
-        'name': 'Camera $cameraId',
-        'streamUrl': 'http://192.168.0.22:3000/stream',
-        'isActive': true,
-      };
-      _isLoading = false;
-    } catch (e) {
-      _isLoading = false;
-      _errorMessage = 'Failed to load camera: $e';
-    }
-
-    notifyListeners();
   }
 }
